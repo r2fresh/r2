@@ -1,5 +1,8 @@
 define(['config'], function(config){
-	function ApiManager(){
+	var app;
+
+	function ApiManager(_app){
+		app = _app;
 		this.loadGapi();
 	}
 
@@ -24,7 +27,34 @@ define(['config'], function(config){
 		}
 
 		function handleAuthResult(authResult){
-			console.log(authResult)
+			var authTimeout;
+
+			if(authResult && !authResult.error) {
+				// Schedule a check when the authentication token expires
+				if(authResult.expires_in){
+					authTimeout = (authResult.expires_in - 5 * 60) * 1000;
+					setTimeout(checkAuth, authTimeout)
+				}
+
+				app.views.auth.$el.hide();
+				$('#signed-in-container').show();
+				self.trigger('ready');
+			} else {
+				if(authResult && authResult.error){
+					// TODO : Show error
+					console.error('Unable to sign in', authResult.error);
+				}
+
+				app.views.auth.$el.show();
+			}
+		}
+
+		this.checkAuth = function(){
+			gapi.auth.authorize({ 
+				client_id: config.clientId, 
+				scope: config.scopes, 
+				immediate: false 
+			}, handleAuthResult)
 		}
 
 		handleClientLoad();
@@ -66,8 +96,26 @@ define(['config'], function(config){
 			break;
 
 			case 'read':
+				var request = gapi.client.tasks[model.url].list(options.data);
+				Backbone.gapiRequest(request, method, model, options)
 			break;
 		}
+	}
+
+	Backbone.gapiRequest = function(request, method, model, options) {
+		var result;
+		request.execute(function(res){
+			if(res.error){
+				if(options.error) options.error(res);
+			} else if(options.sucess){
+				if (res.items) {
+		          result = res.items;
+		        } else {
+		          result = res;
+		        }
+        		options.success(model, result, request);
+			}
+		})
 	}
 
 	return ApiManager;
